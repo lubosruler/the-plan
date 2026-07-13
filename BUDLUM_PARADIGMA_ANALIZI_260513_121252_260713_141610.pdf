@@ -1,0 +1,220 @@
+# BUDLUM İÇİN BULGULAR — Doğrulanmış, Derlenmiş Rapor
+
+**Hazırlayan:** Claude (Ayaz için, Lubot/Arena'ya iletilmek üzere)
+**Yöntem:** `uploads/` klasöründeki tüm bulgu belgeleri (`LUBOT_BRIEFING.md`,
+`BUDLUM_BUG_REPORT.md`, `BUDLUM_BUDZERO_AUDIT.md`,
+`BUDLUM_GUVENLIK_DENETIMI_2026-07-13.md`, `Budlum_Guvenlik_Inceleme_Raporu.md`)
+okundu; her madde, workspace'teki gerçek kaynak koduna karşı `grep`/satır
+okuma ile **tek tek doğrulandı**. Metne güvenilmedi — sadece kodda hâlâ
+gerçekten var olan maddeler "AÇIK" olarak işaretlendi.
+
+**Hangi kod üzerinden doğrulandı:**
+- budlum-core → en güncel elimde olan kopya: Tur 15 (`budlum-main`, CI yeşil,
+  423 test). **Not:** bu workspace'teki `budlum_t5` Tur 9.5.6'da, yani bu
+  rapordaki budlum-core maddeleri Tur 15'e göre doğrulandı, Tur 9.5.6'ya göre
+  değil — Lubot'un çalıştığı kopyanın gerçekten Tur 15+ olduğundan emin olun
+  (bkz. DEVİR RAPORU §2).
+- BudZero → bu workspace'teki kopya (HEAD `223f599` + commit edilmemiş Z-B
+  değişiklikleri).
+
+---
+
+## A. AÇIK — Doğrulandı, Hâlâ Kodda Var (öncelik sırasıyla)
+
+### A1. [Yüksek] İmza doğrulama, nonce/bakiye kontrolünden önce çalışıyor (DoS)
+**Kaynak:** LUBOT_BRIEFING #4 · **Dosya:** `budlum-core/src/core/account.rs`,
+`validate_transaction_with_context`
+**Doğrulama:** Fonksiyon sırası birebir doğrulandı: `tx.verify()` (Ed25519/BLS/
+Dilithium imza kontrolü, pahalı) 474. satırda, nonce kontrolü 480'de, bakiye
+kontrolü 486'da — yani ucuz kontroller pahalı olandan **sonra**.
+**Çözüm:** Nonce ve bakiye kontrollerini `tx.verify()`'den önceye alın.
+
+### A2. [Yüksek] Governance teklif oluşturma validator/stake kontrolü yok
+**Kaynak:** LUBOT_BRIEFING #7 · **Dosya:** `src/execution/executor.rs`
+**Doğrulama:** `TransactionType::Vote` işleyicisinde oy kullanma
+(`voter_stake == 0` → reddet) kontrolü var, ama aynı fonksiyonun teklif
+oluşturma dalında (`state.governance.create_proposal(...)`) hiçbir
+validator/stake kontrolü yok. Herhangi bir hesap, sadece işlem ücretini
+ödeyerek sınırsız teklif açabilir.
+**Çözüm:** Teklif oluşturmadan önce `voter_stake == 0` ile aynı kontrolü ekleyin.
+
+### A3. [Orta] `SystemTime::now().duration_since(UNIX_EPOCH).unwrap()` panik riski
+**Kaynak:** LUBOT_BRIEFING #8 · **Dosya:** `src/core/transaction.rs:175-177`
+**Doğrulama:** Birebir doğru — `.unwrap()` orada, `unwrap_or` yok.
+**Çözüm:** `.unwrap_or_default()` veya `.unwrap_or(Duration::ZERO)` kullanın.
+
+### A4. [Düşük] Ban süresi restart'ta tam sıfırlanıyor (kalan süre kaybolmuyor, ama yanlış hesaplanıyor)
+**Kaynak:** LUBOT_BRIEFING #10 · **Dosya:** `src/network/peer_manager.rs`
+**Doğrulama:** `get_persisted_banned_peers()` sadece peer ID string listesi
+döndürüyor (kalan süre yok); `reload_banned_peers()` her ID'yi
+`Instant::now() + BAN_DURATION` ile **tam süreden** yeniden banlıyor. İddia
+edilenin birebir aynısı doğrulandı.
+**Çözüm:** Ban bitiş zamanını `SystemTime`/Unix timestamp olarak kalıcı
+kaydedin, reload'da kalan süreyi hesaplayıp uygulayın.
+
+### A5. [Yüksek] Rol bazlı slashing diğer rollere sıçramıyor (slashing evading)
+**Kaynak:** LUBOT_BRIEFING #13 · **Dosya:** `src/registry/permissionless.rs`, `slash()`
+**Doğrulama:** `slash()` sadece verilen tek `(role, account)` kaydına
+dokunuyor. Aynı adresin başka bir rolündeki (`RoleId`) kaydı etkilenmiyor —
+kod, `registrations: BTreeMap<(RoleId, Address), Registration>` yapısı
+gereği rol bazlı izole. Bir validator suç işleyip relayer rolünde
+cezasızca devam edebilir.
+**Çözüm:** Yüksek seviye slashing tetiklendiğinde aynı `Address`'in tüm
+rollerini tarayıp askıya alan bir "cross-role slash" adımı ekleyin.
+
+### A6. [Yüksek] PoA lider seçimi tam öngörülebilir (round-robin, VRF yok)
+**Kaynak:** LUBOT_BRIEFING #15 · **Dosya:** `src/consensus/poa.rs`, `expected_proposer`
+**Doğrulama:** `let slot = (block_index as usize) % active_validators.len();`
+— birebir doğrulandı, kriptografik rastgelelik yok.
+**Çözüm:** VRF tabanlı lider seçimine geçin ya da en azından
+epoch-seed + hash tabanlı bir karıştırma ekleyin.
+
+### A7. [Yüksek] BLS PoP imzasında chain_id/genesis-hash yok → replay riski
+**Kaynak:** LUBOT_BRIEFING #19 · **Dosya:** `src/chain/finality.rs`, `pop_signing_message`
+**Doğrulama:** Mesaj birebir `b"BUDLUM_BLS_POP" + address + bls_pk` —
+chain_id veya genesis hash yok. Testnette yakalanan bir PoP imzası mainnet'te
+tekrar kullanılabilir.
+**Çözüm:** `pop_signing_message`'a `chain_id` (veya genesis hash) parametresi
+ekleyip mesaja dahil edin (domain separation).
+
+### A8. [Orta] Governance `ChangeBaseFee` / `ChangeBlockReward` sınırsız uygulanıyor
+**Kaynak:** Bu raporun kendi bulgusu (LUBOT_BRIEFING #9'un incelenmesi sırasında bulundu)
+**Dosya:** `src/core/account.rs`, `execute_proposal`
+**Doğrulama:** `ProposalType::ChangeBaseFee` ve `ChangeBlockReward` teklifleri
+kabul edildiğinde **hiçbir üst/alt sınır kontrolü olmadan** doğrudan
+`self.base_fee` / `self.tokenomics.block_reward`'a yazılıyor. $BUD'un 100M
+sabit arz modeliyle çelişebilecek bir `block_reward` değeri governance
+yoluyla dayatılabilir.
+**Not:** `ProposalType::ParameterUpdate` (LUBOT_BRIEFING #9'un asıl bahsettiği
+unbonding/slash-ratio senaryosu) şu an **hiçbir şey yapmıyor** — `execute_proposal`
+içinde sadece `tracing::info!` log'u basıyor, gerçek bir alanı değiştirmiyor.
+Yani #9'daki spesifik senaryo (unbonding sonsuza ayarlanması) **şu an teknik
+olarak mümkün değil** çünkü mekanizma henüz kodlanmamış — ama bu, "güvenli"
+olduğu anlamına gelmiyor, sadece "eksik/atıl" olduğu anlamına geliyor. İkisi
+de (ParameterUpdate'in gerçekten bağlanması VE ChangeBaseFee/ChangeBlockReward'a
+sınır konması) aynı iş paketinde ele alınmalı.
+**Çözüm:** Her iki proposal tipine de protokol seviyesinde sabit üst/alt
+sınırlar ekleyin; `ParameterUpdate`'i gerçekten `RegistryParams`'a bağlarken
+bu sınırları en baştan dahil edin.
+
+### A9. [BudZero/Yüksek] VM state rollback tek slotlu, nested call'ları bozuyor
+**Kaynak:** LUBOT_BRIEFING #5 · **Dosya:** `BudZero/bud-state/src/lib.rs`
+**Doğrulama:** `backup: Option<HashMap<u64, Account>>` tek slot;
+`begin_transaction()` doğrudan `self.backup = Some(self.accounts.clone())`
+yapıyor — ikinci çağrıda ilk yedek eziliyor. Birebir doğrulandı.
+**Çözüm:** `backup_stack: Vec<HashMap<u64, Account>>` (LIFO) kullanın.
+
+### A10. [BudZero/Orta] `save()` disk hatasında panikle çöküyor
+**Kaynak:** LUBOT_BRIEFING #12 · **Dosya:** `BudZero/bud-state/src/lib.rs:166-168`
+**Doğrulama:** `save()` → `self.save_atomic().expect(...)`. Alttaki
+`save_to`/`save_atomic` zaten düzgün `Result` döndürüyor — sorun sadece bu
+ince sarmalayıcıda.
+**Çözüm:** `save()`'i de `Result` döndürecek şekilde değiştirin, `.expect()`'i kaldırın (tek satırlık düzeltme).
+
+### A11. [BudZero/Yüksek] Derleyici heap pointer'ı 4096'dan başlatıyor, L1 VM belleği 1024 bayt
+**Kaynak:** LUBOT_BRIEFING #14 · **Dosyalar:** `BudZero/bud-compiler/src/codegen.rs:54`
+(`Load, 31, 0, 0, 4096`) ve `budlum-core/src/execution/zkvm.rs`
+(`Vm::with_gas_limit(1024, gas_limit)`, iki çağrı noktası da aynı)
+**Doğrulama:** İki taraf ayrı ayrı doğrulandı — derleyici heap'i 4096'da
+başlatıyor, ama L1 tarafında VM'e verilen bellek sadece 1024 bayt. Heap
+kullanan **her** program anında `InvalidMemoryAccess` ile çöker.
+**Çözüm:** L1 tarafındaki `Vm::with_gas_limit(1024, ...)` çağrılarını en az
+`8192`'ye çıkarın (LUBOT_BRIEFING'in önerdiği gibi) — bu şu an aktif ve
+kolayca doğrulanabilir bir uyumsuzluk, tahmini değil.
+
+### A12. [BudZero/Orta] SRead/SWrite gaz maliyeti Load/Store ile aynı (3 birim)
+**Kaynak:** LUBOT_BRIEFING #11 · **Dosya:** `BudZero/bud-vm/src/lib.rs:721-724`
+**Doğrulama:** `gas_cost()` fonksiyonunda `Load | Store | SRead | SWrite => 3`
+— dördü de aynı grupta. Doğrulandı.
+**Çözüm:** SRead/SWrite'a ayrı, daha yüksek bir gaz maliyeti tanımlayın.
+
+### A13. [BudZero/Kritik, kısmen açık] VerifyMerkle (Z-B) — Merkle yolu AIR'de hesaplanmıyor
+**Kaynak:** LUBOT_BRIEFING #2, #17 + BUDLUM_BUDZERO_AUDIT Z-B
+**Doğrulama:** Bu madde zaten sizin kendi güncel çalışmanızın konusu —
+`DEVİR RAPORU (eski)` bunun "Tur 10.6 Commit 3.5" olarak hâlâ debug
+aşamasında olduğunu, `proves_verify_merkle_valid_64_depth` testinin
+`#[ignore]` ile kapalı olduğunu doğruluyor; workspace'teki commit edilmemiş
+`plonky3_air.rs`/`plonky3_prover.rs`/`bud-vm/lib.rs` değişiklikleri de tam bu
+konuyla eşleşiyor. **Yani bu madde zaten bilinen ve üzerinde çalışılan bir
+madde — yeni bir bulgu değil, ama hâlâ kapanmamış.** Kapanana kadar bu opcode
+prod ZK akışında devre dışı kalmalı (zaten öyle görünüyor).
+
+---
+
+## B. ZATEN ÇÖZÜLMÜŞ — Arena Tekrar Uğraşmasın
+
+Aşağıdakiler eski bulgu dosyalarında yer alıyor ama Tur 15 kodunda **doğrulanmış
+şekilde zaten düzeltilmiş**:
+
+- **BUDLUM_BUG_REPORT #1-10 (tamamı):** Slashing sahte doğrulama, QC blob
+  dedup sırası, PoW zorluk ayrımı, QC fault-proof erişilemezliği, BLS keypair
+  bütünlüğü, double-sign etiketleme, KeyPair stdout sızıntısı, eski slash
+  oranları, PoW cross-domain forgery, Unstake/Vote cost-floor — bunların
+  hepsi git log'da isim isim eşleşen `tur9.1`–`tur9.5.6` commit'leriyle
+  birebir kapatılmış (`tur9.1: remove fake-verify slashing module`,
+  `tur9.2: bridge mint/unlock forgery gate`, `tur9.3: PoW difficulty
+  decoupled`, `tur9.4: QC blob quorum post-dedup`, `tur9.5.1`–`tur9.5.6`).
+- **BUDLUM_GUVENLIK_DENETIMI_2026-07-13 (tamamı, 5 madde):** Derleme hatası
+  (23 hata) düzeldi, CI yeşil. `SnapshotChunk.total` artık `MAX_SNAPSHOT_CHUNKS`
+  ile önceden reddediliyor (allocation'dan önce). BLS PoP artık
+  `build_validator_snapshot_from_state` içinde gerçekten çağrılıyor + özel
+  hardening testi var. `peer_manager` lock'ları artık poison'da
+  `process::exit(1)` ile fail-stop yapıyor (parking_lot değil ama kabul
+  edilebilir bir çözüm). `sled 0.34` hâlâ pre-1.0 ama bu bilgi notu, aksiyon
+  gerektirmiyor.
+- **LUBOT_BRIEFING #16 (Gossip-Storm DoS / rate limiter yok iddiası) — YANLIŞ/GEÇERSİZ:**
+  `src/network/peer_manager.rs` ve `node.rs`'de `check_rate_limit`,
+  `check_vote_rate_limit`, `check_blob_rate_limit` fonksiyonları var ve
+  mesaj işleme yollarının **hepsinde** çağrılıyor. Bu madde muhtemelen daha
+  eski bir koda bakılarak yazılmış; şu an geçersiz, Arena'ya iletilmemeli.
+- **LUBOT_BRIEFING #20 (köprü domain-retire refund yok) — BÜYÜK ÖLÇÜDE ÇÖZÜLMÜŞ:**
+  `src/cross_domain/bridge.rs` içinde `expiry_height` tabanlı genel bir
+  timeout mekanizması zaten var (`current_height >= expiry_height` olunca
+  transfer otomatik `Active`'e dönüyor, iddia edildiği gibi kalıcı kilit
+  değil). Domain'in özel olarak "retired" durumuna bağlı ayrı bir dal yok
+  ama genel timeout zaten aynı pratik korumayı sağlıyor gibi görünüyor — bu
+  maddeyi düşük öncelikli "nice-to-have" olarak bırakın, kritik değil.
+
+---
+
+## C. DOĞRULANAMADI — Arena'ya Verilmeden Önce Ek İnceleme Gerekir
+
+Bunlar STARK/AIR matematiği gibi benim `grep` ile kesin doğrulayamayacağım,
+uzman incelemesi gerektiren maddeler — ne doğrulandı ne reddedildi:
+
+- **LUBOT_BRIEFING #1 (event_digest 32-bit range-proof eksikliği):**
+  `event_digest`/`exit_code`/`chain_id` artık `tur10.5.z_a_phase1/phase2`
+  commit'leriyle witness sütunlarına bağlanmış durumda — ama iddia edilen
+  spesifik "32-bit taşma range-proof'u yok" tekniği doğru mu, bunu AIR
+  kısıtlarının satır satır matematiğini çözmeden kesin söyleyemem. Lubot'a
+  iletirken "doğrulanmadı, olası açık" etiketiyle verin.
+- **BUDLUM_BUDZERO_AUDIT Z-C, Z-D:** `tur10.zk` commit mesajı "Z-C termination
+  constraint + Z-D terminal Halt step" ile ikisinin de ele alındığını
+  söylüyor; AIR kısıtlarının matematiğini doğrulamadım, sadece commit
+  mesajına güvendim. Muhtemelen çözülmüş, ama BUDLUM_BUDZERO_AUDIT'te
+  kesin kapatıldı diye işaretlemeden önce Lubot'tan test kanıtı isteyin.
+- **Budlum_Guvenlik_Inceleme_Raporu Bulgu 3, 5, 6** (auth'suz
+  `bud_lockBridgeTransfer`, RPC auth varsayılan kapalı, validator anahtar
+  dosyası TOCTOU) — bu workspace'te ilgili RPC/CLI dosyalarını derinlemesine
+  incelemeye zaman kalmadı. Öncelik verirseniz ayrıca doğrularım.
+
+---
+
+## D. Önceliklendirilmiş Aksiyon Sırası (öneri)
+
+1. **A1** (imza/nonce sırası) — tek satırlık, çok ucuz, hemen yapılabilir.
+2. **A11** (heap/VM bellek uyumsuzluğu) — tek satırlık sabit değişimi, ama
+   şu an ZK tarafında heap kullanan HER programı kırıyor; acil.
+3. **A10** (`save()` panic) — tek satırlık.
+4. **A2, A6, A7** (governance spam, PoA öngörülebilirlik, PoP replay) — orta
+   büyüklükte, tasarım gerektirmiyor, doğrudan uygulanabilir.
+5. **A5, A8** (cross-role slashing, governance param sınırları) — biraz daha
+   fazla tasarım gerektiriyor ama net.
+6. **A9** (backup stack) — BudZero tarafında, orta büyüklük.
+7. **A3, A4, A12** (küçük/düşük öncelik ama ucuz düzeltmeler).
+8. **A13 (Z-B Merkle path)** — zaten aktif sprint'inizin konusu, C bölümündeki
+   Z-A/Z-C/Z-D doğrulamasıyla birlikte ayrı bir ZK-özel sprint olarak devam
+   edin.
+
+Bölüm B'deki hiçbir şey Arena'ya görev olarak verilmemeli — zaten kapalı.
+Bölüm C, uzman/manuel STARK incelemesi olmadan iddia olarak kalsın.
