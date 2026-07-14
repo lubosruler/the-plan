@@ -1,0 +1,495 @@
+# DEVİR RAPORU YENİ — TUR 13.9 KAPANIŞ MİSYONU
+
+**Hedef konum:** `github.com/lubosruler/the-plan/DEVIR_RAPORU_YENI.md`  
+**Format:** Gerçek Markdown  
+**Güncelleme tarihi:** 2026-07-14  
+**Ajan adı / çalışma kimliği:** **Lubo**  
+**Ana uygulama deposu:** `github.com/lubosruler/budlum`  
+**Kaynak-plan deposu:** `github.com/lubosruler/the-plan`
+
+> Bu belge, yeni bir Arena.ai işi açıldığında Tur 13.9'un hiçbir güvenlik
+> kapısını gevşetmeden, hiçbir roadmap maddesini sınıflandırılmamış bırakmadan
+> ve Budlum'un paradigma hedeflerini gerçek teknik kanıtlarla yaşatacak şekilde
+> devralınması için hazırlanmıştır.
+
+---
+
+## 1. Değiştirilemez proje kararları
+
+### 1.1 Tek repository kararı
+
+Budlum L1 ile BudZero/BudZKVM artık tek repository içindedir:
+
+- L1: repository root — `budlum-core`
+- ZK workspace: `budzero/`
+- Eski `lubosruler/BudZero`: tarihsel kaynak; yeni geliştirmelerin hedefi değil
+- Harici sibling checkout veya BudZero commit pin'i geri getirilmeyecek
+- L1 ve prover/verifier uyumluluğunun sınırı aynı Git commit'idir
+
+### 1.2 B.U.D. kapsam kararı
+
+- `budlum-xyz/B.U.D.` roadmap'i **Tur 14** konusudur.
+- Tur 13.9'da B.U.D. storage ağı kodlanmayacak.
+- Ancak Tur 14'ün önkoşulları — özellikle `VerifyMerkle`, finality, migration ve
+  operasyon güvenliği — dürüst biçimde raporlanacaktır.
+
+### 1.3 Güvenlik dürüstlüğü
+
+Aşağıdaki ifadeler kanıt olmadan kullanılamaz:
+
+- “Audited”
+- “Mainnet ready”
+- “Production safe”
+- “Tüm roadmap tamamlandı”
+- “Tüm opcode'lar production”
+- “BLS/PQ tamamen HSM korumalı”
+
+Bağımsız dış denetim, gerçekten üçüncü tarafça yapılmadan tamamlanmış sayılamaz.
+Tur 13.9 dış denetim paketini eksiksiz hazırlayabilir; yapılmamış denetimi yapılmış
+olarak gösteremez.
+
+---
+
+## 2. Mevcut doğrulanmış durum
+
+### Tur 13
+
+- Son kullanıcı, geliştirici ve kurumsal PoA persona config'leri eklendi.
+- Org roadmap denetimi hazırlandı.
+- BudZero Z-B ilerlemesi yapıldı.
+- `VerifyMerkle` pozitif 64-depth proof yeşil olmadığı için Production gate
+  bilinçli olarak kapalı tutuldu.
+- B.U.D. Tur 14'e ayrıldı.
+
+### Tur 13.5
+
+PR: `lubosruler/budlum#5`  
+Merge commit: `c574ec4ec905df61f0f862933da57aeb72b071b3`
+
+Tamamlananlar:
+
+1. BudZero workspace `budzero/` altına taşındı.
+2. CI ve Docker harici BudZero checkout kullanmayacak şekilde güncellendi.
+3. `pow-header-chain-v1` bounded PoW finality adapter'ı eklendi.
+4. Header hash, parent link, root, timestamp, difficulty ve work yeniden
+   hesaplanır hale getirildi.
+5. Legacy `pow-confirmation-depth` proof'u arşiv uyumluluğu için korundu fakat
+   bridge mint yetkisi verilmedi.
+6. PoW mint yalnız applied ve contiguous domain chain üzerindeki header-chain
+   finality commitment'larından yapılabilir hale getirildi.
+7. Archive rolü için pruning yasağı ve zorunlu backup politikası getirildi.
+8. SHA-256 checksum'lı atomik backup, retention, boş hedefe restore ve integrity
+   drill eklendi.
+9. RPC quota accounting 10.000 aktif IP ile sınırlandı.
+10. İmzasız yönetim yardımcıları operator RPC'ye kapatıldı.
+11. Storage/consensus/block propagation histogramları canlı yollara bağlandı.
+12. BudZero proof süre/boyut baseline benchmark'ı eklendi.
+13. Budlum Core ve BudZero/BudZKVM CI kapıları başarılı geçti.
+
+---
+
+## 3. Tur 13.9'un ana amacı
+
+Tur 13.9 yalnızca bir dokümantasyon turu değildir.
+
+**Amaç:** `budlum-xyz/Budlum` ve `budlum-xyz/BudZero` roadmap'lerindeki bütün
+maddeleri kanıtlarıyla sınıflandırmak; kodlanabilir güvenlik ve operasyon
+boşluklarını kapatmak; dış süreç isteyen maddeleri eksiksiz teslim paketine ve
+fail-closed release blocker'a dönüştürmek; README'yi gerçek durumla birebir
+uyumlu hale getirmek.
+
+Tur sonunda roadmap'te sahipsiz veya belirsiz madde kalmayacaktır. Her madde şu
+kapanış durumlarından birine sahip olmalıdır:
+
+1. **Implemented + tested** — kod, negatif test ve doküman kanıtı var.
+2. **Externally verified** — bağımsız süreç gerçekten tamamlanmış ve kayıtlı.
+3. **Fail-closed external blocker** — üçüncü taraf/süreç gerekiyor; ürün bu
+   yetenek için kapalı ve teslim paketi hazır.
+4. **Superseded / Tur 14** — teknik gerekçe, yeni hedef ve açık sahiplik var.
+
+“Belirsiz”, “sonra bakılır”, “muhtemelen tamam” kabul edilmez.
+
+---
+
+## 4. CI için değiştirilemez ratchet politikası
+
+### 4.1 Temel kural
+
+CI yalnızca **daha sıkı** hale getirilebilir.
+
+Bu proje için gerekli bir denetim, sırf yeni kod geçsin diye:
+
+- kaldırılamaz,
+- yumuşatılamaz,
+- kapsamı daraltılamaz,
+- `allow` ile susturulamaz,
+- test `ignore` edilerek etkisizleştirilemez,
+- yalnız doküman iddiasıyla karşılanamaz.
+
+### 4.2 Korunacak mevcut Budlum kapıları
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --lib --tests -- -D warnings
+cargo test --lib
+```
+
+### 4.3 Korunacak mevcut BudZero kapıları
+
+```bash
+cargo fmt --manifest-path budzero/Cargo.toml --all -- --check
+cargo check --manifest-path budzero/Cargo.toml --workspace --all-targets
+cargo clippy --manifest-path budzero/Cargo.toml --workspace --all-targets -- -D warnings
+cargo test --manifest-path budzero/Cargo.toml --workspace
+```
+
+### 4.4 Tur 13.9'da değerlendirilecek ek kapılar
+
+Ek kapılar önce gerçek codebase ile uyumlandırılmalı, sonra kalıcı hale
+getirilmelidir. Bir kapıyı eklemek için mevcut kapı kaldırılamaz.
+
+Aday denetimler:
+
+- `cargo test --locked`
+- release-mode kritik test/build
+- `cargo deny` license/bans/sources/advisory kontrolü
+- RustSec/advisory taraması
+- doküman iç-link kontrolü
+- committed generated-file / dirty-tree kontrolü
+- yasaklı `#[allow(clippy::...)]`, yeni `unwrap_or_default()` güvenlik kalıbı ve
+  üretim yolundaki kontrolsüz `unsafe` denetimi
+- ignored test envanteri; production gate'i etkileyen ignored test varsa CI'da
+  açık borç kontrolü
+- backup/restore smoke drill
+- proof-format compatibility ve L1 ↔ BudZero public-input uyum testi
+- minimum supported Rust version ve locked dependency build
+
+### 4.5 CI değişiklik kabul kriteri
+
+Her CI commit'i README/development dokümanında şunları açıklamalıdır:
+
+- Eklenen kapı hangi riski engelliyor?
+- Hangi workspace ve target'ları kapsıyor?
+- Hata durumunda nasıl düzeltilir?
+- Önceki hangi kapılar aynen korunuyor?
+
+---
+
+## 5. `the-plan` eksiksiz okuma protokolü
+
+Tur 13.9 koduna başlamadan önce `the-plan` içinde okunmamış dosya
+bırakılmayacaktır.
+
+### 5.1 Zorunlu envanter
+
+Her tracked dosya için aşağıdaki alanları içeren bir manifest üret:
+
+| Alan | Açıklama |
+| --- | --- |
+| Path | Repository içindeki tam yol |
+| Tür | Markdown, Rust, TOML, patch, PDF, binary vb. |
+| SHA-256 | İçerik kimliği |
+| Boyut | Byte cinsinden |
+| Okuma durumu | Okundu / ayrıştırıldı / duplicate / blocker |
+| Kaynak rolü | Plan, bulgu, patch, rapor, kod parçası, eski sürüm |
+| Aksiyon | Uygula, doğrula, supersede et veya Tur 14'e bağla |
+
+### 5.2 Dosya türü isme bakılarak varsayılmayacak
+
+Önceki `DEVIR_RAPORU_YENI.md` dosyası `.md` uzantısına rağmen PDF payload
+olarak görülmüştür. Bu nedenle:
+
+- `file`/magic-byte kontrolü yapılmalı,
+- PDF metni ayrıştırılmalı,
+- binary dosya “Markdown” diye yüzeysel okunmuş sayılmamalı,
+- duplicate isimli dosyalar içerik hash'iyle karşılaştırılmalıdır.
+
+Bu revizyonun hedefi gerçek Markdown dosyasıdır.
+
+### 5.3 Öncelikli kaynaklar
+
+Aşağıdaki dosyalar yalnız özetlenmeyecek; bulgu–kod–test eşlemesi yapılacaktır:
+
+- `DEVIR_RAPORU_YENI.md`
+- `BUDLUM_ICIN_BULGULAR.md`
+- `BUDLUM_ALL_FIXES_PATCH.diff`
+- `BUDLUM_BUG_REPORT.md`
+- `BUDLUM_BUDZERO_AUDIT.md`
+- `TUR11_GENEL_RAPOR.md`
+- `TUR12_RAPOR.md`
+- `TUR12_5_GENEL_RAPOR.md`
+- `TUR12_5_UYGULAMA.md`
+- `TUR12_9_RAPOR.md`
+- `TUR13_PLAN.md`
+- `TUR13_RAPOR.md`
+- `TUR13_ORG_ROADMAP_AUDIT.md`
+- tüm README varyantları
+- tüm Cargo manifest varyantları
+- tüm Rust kaynak parçaları
+- tüm BudZero teknik belgeleri
+- paradigma analizi PDF'i
+- `claude-fable-5 (1).md`
+
+`BUDLUM_ALL_FIXES_PATCH.diff` current branch'te bulunamazsa sessizce atlanmayacak;
+repository history/branch/isim varyantı kontrol edilecek. Yine bulunamazsa bu durum
+kaynak blocker olarak açıkça raporlanacaktır.
+
+### 5.4 Okuma tamamlanma kanıtı
+
+Kodlamadan önce şu belgeler üretilmeli:
+
+1. `THE_PLAN_SOURCE_MANIFEST.md`
+2. `TUR13_9_GAP_MATRIX.md`
+3. `TUR13_9_EXECUTION_PLAN.md`
+
+Her roadmap ve güvenlik bulgusu bu matrislerden birinde izlenebilir olmalıdır.
+
+---
+
+## 6. Budlum + BudZero roadmap kapanış denetimi
+
+### 6.1 Budlum başlıkları
+
+En az aşağıdaki alanlar yeniden doğrulanmalıdır:
+
+- Multi-consensus domain izolasyonu
+- Settlement atomicity ve durable persistence
+- Verified settlement/finality adapter'ları
+- Bridge lock → mint → burn → unlock güvenliği
+- PoW header-chain finality ve mint politikası
+- BLS prevote/precommit/finality coordinator canlı yolu
+- Dilithium QC ve BLS/PQ birlikte finality politikası
+- QC challenge/fault-proof yolu
+- Permissionless validator/verifier/relayer/prover modeli
+- PoA KYC/authority registry izolasyonu
+- Snapshot V2, archive, backup ve restore
+- P2P identity/discovery/ban/rate-limit güvenliği
+- Public/operator RPC ayrımı
+- Metrics, deployment ve incident prosedürleri
+- ConsensusStateV2 staged migration
+- Mainnet v1 feature policy
+- Formal verification teslim kapsamı
+- External audit teslim paketi
+- Privacy ve AI roadmap maddelerinin dürüst teknik statüsü
+
+### 6.2 BudZero başlıkları
+
+En az aşağıdaki alanlar yeniden doğrulanmalıdır:
+
+- ISA Production/Experimental ayrımı
+- Tüm opcode gas ve trace davranışı
+- Z-A public-input binding
+- Z-B `VerifyMerkle` soundness
+- Pozitif 64-depth prove/verify
+- Z-C termination/halt constraint
+- Z-D hatalı step/trace davranışı
+- Storage gas ve AIR uyumu
+- Compiler/parser/sema/codegen kapsamı
+- Nested state transaction rollback
+- Proof envelope/version/size limitleri
+- L1 host public-input uyumu
+- Phase 10 performance baseline ve regression sınırları
+- Phase 11 audit checklist
+- Phase 12 documentation kapanışı
+
+### 6.3 `VerifyMerkle` değiştirilemez gate
+
+Pozitif 64-depth proof gerçekten yeşil olmadan:
+
+- Production ISA gate açılamaz.
+- README “31 opcode production” diyemez.
+- B.U.D. Proof-of-Storage hazır sayılamaz.
+- Ignored test silinemez veya yalnızca başarı görüntüsü için değiştirilemez.
+
+---
+
+## 7. Tur 13.9 teknik çalışma paketleri
+
+### Paket A — Tam kaynak ve roadmap matrisi
+
+- `the-plan` tam envanteri
+- org Budlum/BudZero roadmap yeniden okuması
+- her madde için dosya, sembol, test ve commit kanıtı
+- duplicate/eski önerilerin supersede kayıtları
+
+### Paket B — CI ratchet
+
+- mevcut bütün kapıları koru
+- uygulanabilir ek security/supply-chain/doc gates ekle
+- CI bypass ve ignored-test politikasını yazılı hale getir
+- root ile `budzero/` kapılarını aynı PR'da doğrula
+
+### Paket C — BLS/PQ anahtar güvenliği
+
+- Ed25519 PKCS#11 ile BLS/PQ capability farkını kesinleştir
+- disk secret yasağını koru
+- mümkünse signer abstraction'ını BLS/PQ için genişlet
+- tam HSM yolu tamamlanamazsa mainnet capability fail-closed kalsın
+- secret zeroization, serialization ve key-integrity negatif testleri ekle
+
+### Paket D — Finality canlı yol son taraması
+
+- prevote → quorum → precommit → certificate → broadcast → apply
+- restart/persistence davranışı
+- equivocation ve invalid signature yolları
+- QC fault challenge davranışı
+- çok node, gecikme, duplicate, partition ve recovery testleri
+- doküman ile gerçek runtime arasında fark bırakma
+
+### Paket E — ConsensusStateV2 migration
+
+- schema/version politikasını tanımla
+- staged migration hook'u
+- eski sürümden upgrade testi
+- downgrade/rollback kararı
+- backup-before-migrate ve restore drill
+- consensus root değişikliği varsa açık protocol versioning
+
+### Paket F — Audit/formal/research kapanışı
+
+- dış denetim scope'u
+- threat model
+- build/test talimatları
+- known limitations
+- cryptographic assumptions
+- reproducible artifact listesi
+- formal model için güvenlik invariants/spec paketi
+- privacy ve AI satırları için uygulanmış olan ile araştırma olanı ayır
+
+Bu paket bağımsız denetimin kendisi değildir; denetçinin işe başlayabileceği
+profesyonel teslim paketidir.
+
+### Paket G — Profesyonel README ve release anlatısı
+
+README şu soruların hepsine doğru cevap vermelidir:
+
+1. Budlum nedir?
+2. Neyi yapmaz?
+3. Aynı binary user/dev/enterprise PoA için nasıl çalışır?
+4. BudZero neden aynı repository içindedir?
+5. Hangi özellikler production-gated?
+6. PoW bridge hangi proof ile açılır?
+7. Anahtarların hangisi HSM'de, hangisi değildir?
+8. Hangi roadmap maddeleri kapandı?
+9. Hangi işler dış süreç/research blocker'ıdır?
+10. B.U.D. neden Tur 14'tedir?
+
+README'de hızla eskiyen sabit test sayısı kullanılmamalı. CI badge'i ve doğrulama
+komutları gerçek workflow ile aynı olmalıdır.
+
+---
+
+## 8. Commit politikası
+
+Tur 13.9 tek, okunamaz mega-commit olarak yapılmamalıdır.
+
+Önerilen sıralama:
+
+1. `docs: inventory every the-plan source and map roadmap gaps`
+2. `ci: ratchet monorepo security and quality gates`
+3. `security: harden BLS and PQ key protection policy`
+4. `finality: close live coordinator and adversarial gaps`
+5. `storage: add staged ConsensusStateV2 migration path`
+6. `audit: publish reproducible external review package`
+7. `docs: close Budlum and BudZero roadmap truth table`
+8. `docs: publish Tur 13.9 report and final Arena handoff`
+
+Her commit:
+
+- tek bir teknik amacı taşımalı,
+- ilgili negatif testleri içermeli,
+- README/docs etkisini aynı commit'te güncellemeli,
+- bağımsız incelenebilir olmalı,
+- CI kapılarının tamamını geçmelidir.
+
+Sırf commit sayısı artsın diye yapay bölme yapılmayacaktır.
+
+---
+
+## 9. Paradigma kayması kabul matrisi
+
+Tur 13.9, paradigma raporundaki hedefleri slogan değil doğrulanabilir mimari
+özellik olarak ele almalıdır.
+
+| Paradigma hedefi | Tur 13.9 kanıtı |
+| --- | --- |
+| Kuantum geçişi | BLS + Dilithium finality policy, key capability matrisi, fail-closed HSM sınırı |
+| Konsensüs yalnızlığının sonu | PoW/PoS/PoA/BFT/ZK adapter testleri ve registry isolation |
+| CBDC/egemen sistem uyumu | Ayrı domain kimliği, finality, message ve audit kökleri |
+| TradFi ↔ DeFi | PoA izin sınırının permissionless katmanlara sızmadığını kanıtlayan testler |
+| AI + blockchain | BudZero STARK execution ve permissionless proof path; yapılmamış AI ürünü iddiası yok |
+| Dijital egemenlik | Domain lifecycle, freeze/retire, config hash ve cross-domain doğrulama |
+| Bridge hack modelinin kırılması | Header/QC/ZK finality, exact block binding, event proof, replay ve lifecycle testleri |
+
+---
+
+## 10. Persona uyumu kabul kriterleri
+
+| Yetenek | Son kullanıcı | Geliştirici | Kurumsal PoA |
+| --- | --- | --- | --- |
+| Aynı binary | Zorunlu | Zorunlu | Zorunlu |
+| Settlement doğrulama | Açık | Açık | Açık |
+| Block üretimi | Kapalı | Devnet | HSM/policy |
+| Public RPC | Local ve bounded | Configurable | Auth + network policy |
+| Operator RPC | Yok | Local | Local/özel yönetim ağı |
+| PoW bridge | Header-chain verify | Proof üret/test | Policy kontrollü |
+| PoA üyelik | Yok | Test harness | Ayrı KYC/authority registry |
+| Disk BLS/PQ secret | Yok | Devnet-only | Mainnet'te yasak |
+| `VerifyMerkle` production | Gate | Experimental | Gate |
+| B.U.D. | Tur 14 | Tur 14 | Tur 14 |
+
+Bir persona için yapılan kolaylaştırma diğer personanın güvenlik sınırını
+zayıflatamaz.
+
+---
+
+## 11. Tur 13.9 bitiş koşulları
+
+Tur 13.9 ancak aşağıdaki şartların tamamı sağlandığında kapanabilir:
+
+- [ ] `the-plan` tracked dosyalarının tamamı manifestte yer alıyor.
+- [ ] Okunmamış/ayrıştırılmamış dosya yok; blocker varsa açıkça kayıtlı.
+- [ ] Budlum roadmap'in her maddesi kanıtlı bir kapanış durumuna sahip.
+- [ ] BudZero roadmap'in her maddesi kanıtlı bir kapanış durumuna sahip.
+- [ ] Mevcut CI kapılarından hiçbiri kaldırılmadı veya yumuşatılmadı.
+- [ ] Yeni CI kapıları dokümante edildi ve iki workspace'te çalışıyor.
+- [ ] BLS/PQ anahtar politikası kod ve runtime gerçeğiyle aynı.
+- [ ] Finality canlı yol denetimi ve adversarial testleri tamam.
+- [ ] ConsensusStateV2 migration/rollback/backup prosedürü kanıtlı.
+- [ ] External audit paketi hazır; yapılmamış audit yapılmış gösterilmiyor.
+- [ ] README profesyonel, güncel ve commitlerle izlenebilir.
+- [ ] User/dev/enterprise PoA matrisi yeniden doğrulandı.
+- [ ] `VerifyMerkle` gate gerçeğe uygun.
+- [ ] B.U.D. yalnız Tur 14 referansı olarak kaldı.
+- [ ] `TUR13_9_RAPOR.md` üretildi.
+- [ ] Bu devir raporu final commit/PR/CI sonuçlarıyla tekrar güncellendi.
+
+---
+
+## 12. Yeni Arena ajanı için ilk çalışma sırası
+
+1. `the-plan` repository ve branch bilgisini doğrula.
+2. Tam tracked-file manifesti çıkar.
+3. PDF/binary/duplicate içerikleri doğru araçla ayrıştır.
+4. `BUDLUM_ALL_FIXES_PATCH.diff` konumunu doğrula; yoksa blocker yaz.
+5. Org Budlum/BudZero README, specification ve roadmap'lerini yeniden oku.
+6. Mevcut `lubosruler/budlum` main HEAD ve CI workflow'larını denetle.
+7. `TUR13_9_GAP_MATRIX.md` üretmeden kod değiştirme.
+8. Küçük, testli ve açıklanabilir commitlerle paketleri sırayla uygula.
+9. Her commit sonrası hem root hem BudZero kapılarını çalıştır.
+10. PR açıldıktan sonra bütün CI sonuçlarını izle; başarısız kapıyı kaldırma,
+    gerçek nedeni düzelt.
+11. README roadmap tablosunu yalnız kanıt geldikçe kapat.
+12. Son olarak Tur 13.9 raporu ve bu devir belgesini güncelle.
+
+---
+
+## 13. Son talimat
+
+Tur 13.9'un başarı ölçütü daha çok özellik yazmak değil; Budlum'un verdiği
+sözlerle gerçek kod, test, anahtar güvenliği, finality, ZK proof, bridge ve
+operasyon davranışı arasındaki farkı sıfıra yaklaştırmaktır.
+
+**CI gevşetilmeyecek. Roadmap maddeleri kaybolmayacak. README gerçeği aşmayacak.
+`the-plan` içinde okunmamış kaynak bırakılmayacak. B.U.D. Tur 14 sınırı
+korunacaktır.**
